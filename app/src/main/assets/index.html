@@ -13,6 +13,11 @@ body{font-family:system-ui,-apple-system,"Noto Sans Bengali","Nirmala UI",sans-s
 header{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;padding:16px 16px 15px;position:sticky;top:0;z-index:9;box-shadow:0 3px 14px #0002}
 header h1{font-size:clamp(21px,6vw,29px);line-height:1.08;margin:0;font-weight:800;letter-spacing:.1px}
 header p{font-size:clamp(11px,3.4vw,14px);line-height:1.35;margin:6px 0 0;opacity:.96}
+.navcontrols{position:absolute;right:12px;bottom:11px;display:flex;gap:7px}
+.navbtn{width:38px;height:34px;border:1px solid #ffffff55;border-radius:10px;background:#ffffff20;color:#fff;font-size:21px;font-weight:800;line-height:1}
+.navbtn:disabled{opacity:.35}
+#toast{position:fixed;left:50%;bottom:76px;transform:translateX(-50%) translateY(18px);background:#173c2c;color:#fff;padding:11px 15px;border-radius:12px;box-shadow:0 8px 28px #0004;z-index:99;max-width:88vw;text-align:center;font-size:13px;opacity:0;pointer-events:none;transition:.2s}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 main{padding:12px 12px 86px;width:100%;max-width:820px;margin:auto}
 .section{display:none}.section.active{display:block}
 .card{background:var(--card);border-radius:17px;border:1px solid var(--line);box-shadow:0 3px 15px #0000000c;padding:13px;min-width:0}
@@ -43,6 +48,10 @@ hr{border:0;border-top:1px solid #edf1ef;margin:14px 0}.listitem{padding:9px 0;b
 <header>
 <h1>Nager ASIA Garden</h1>
 <p>39 Nilamber Shaha Road, Hazaribagh, Dhaka 1209</p>
+<div class="navcontrols">
+  <button class="navbtn" id="backBtn" onclick="navBack()" aria-label="Back">←</button>
+  <button class="navbtn" id="forwardBtn" onclick="navForward()" aria-label="Forward">→</button>
+</div>
 </header>
 
 <main>
@@ -125,6 +134,7 @@ hr{border:0;border-top:1px solid #edf1ef;margin:14px 0}.listitem{padding:9px 0;b
  </div>
 </section>
 </main>
+<div id="toast"></div>
 
 <nav class="tabs">
 <button class="active" onclick="showTab('dashboard',this)">Dashboard</button>
@@ -158,31 +168,48 @@ monthPick.value=cm;payMonth.value=cm;expMonth.value=cm;payDate.value=today;expDa
 
 function money(n){return '৳'+Number(n||0).toLocaleString('en-BD')}
 function save(){localStorage.setItem(K,JSON.stringify(state));renderAll()}
-function showTab(id,b){document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');renderAll()}
+let navHistory=['dashboard'],navIndex=0;
+function setActiveTab(id){
+  document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+  const btn=[...document.querySelectorAll('.tabs button')].find(x=>x.getAttribute('onclick')?.includes("'"+id+"'"));
+  if(btn)btn.classList.add('active');
+  updateNavButtons();renderAll();
+}
+function showTab(id,b){
+  const current=navHistory[navIndex];
+  if(id!==current){navHistory=navHistory.slice(0,navIndex+1);navHistory.push(id);navIndex=navHistory.length-1}
+  setActiveTab(id);
+}
+function navBack(){if(navIndex>0){navIndex--;setActiveTab(navHistory[navIndex])}}
+function navForward(){if(navIndex<navHistory.length-1){navIndex++;setActiveTab(navHistory[navIndex])}}
+function updateNavButtons(){backBtn.disabled=navIndex<=0;forwardBtn.disabled=navIndex>=navHistory.length-1}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(window.__toastTimer);window.__toastTimer=setTimeout(()=>t.classList.remove('show'),2200)}
 function paidFor(flat,m){return state.payments.filter(p=>p.flat===flat&&p.month===m).reduce((s,p)=>s+Number(p.amount),0)}
 function totalDue(flat){let f=state.flats.find(x=>x.flat===flat),d=Number(f.previousDue||0);Object.entries(state.monthCharges).forEach(([m,c])=>d+=Number(c)-paidFor(flat,m));return Math.max(0,d)}
 function totalCollected(){return state.payments.reduce((s,p)=>s+Number(p.amount),0)}
 function totalExpenses(){return state.expenses.reduce((s,e)=>s+Number(e.amount),0)}
 function currentBalance(){return Number(state.openingBalance||0)+totalCollected()-totalExpenses()}
 function monthExpense(){return state.expenses.filter(e=>e.month===cm).reduce((s,e)=>s+Number(e.amount),0)}
-function saveMonthCharge(){let m=monthPick.value,a=Number(monthCharge.value||0);if(!m||a<0)return alert('Month and amount দিন');state.monthCharges[m]=a;save();alert('Monthly charge saved')}
-function saveOpening(){state.openingBalance=Number(openingBalance.value||0);save();alert('Opening balance saved')}
-function addPayment(){let flat=payFlat.value,m=payMonth.value,d=payDate.value,a=Number(payAmount.value||0);if(!flat||!m||!d||a<=0)return alert('Flat, month, payment date and amount দিন');state.payments.unshift({id:Date.now(),flat,month:m,paymentDate:d,amount:a,method:payMethod.value,date:new Date().toISOString()});payAmount.value='';save()}
-function addExpense(){let m=expMonth.value,d=expDate.value,a=Number(expAmount.value||0);if(!m||!d||a<=0)return alert('Month, date and amount দিন');state.expenses.unshift({id:Date.now(),month:m,expenseDate:d,category:expCat.value,amount:a,note:expNote.value,date:new Date().toISOString()});expAmount.value='';expNote.value='';save()}
+function saveMonthCharge(){let m=monthPick.value,a=Number(monthCharge.value||0);if(!m||a<0)return toast('Month and amount দিন');state.monthCharges[m]=a;save();toast('Monthly charge saved')}
+function saveOpening(){state.openingBalance=Number(openingBalance.value||0);save();toast('Opening balance saved')}
+function addPayment(){let flat=payFlat.value,m=payMonth.value,d=payDate.value,a=Number(payAmount.value||0);if(!flat||!m||!d||a<=0)return toast('Flat, month, payment date and amount দিন');state.payments.unshift({id:Date.now(),flat,month:m,paymentDate:d,amount:a,method:payMethod.value,date:new Date().toISOString()});payAmount.value='';save();toast('Payment saved')}
+function addExpense(){let m=expMonth.value,d=expDate.value,a=Number(expAmount.value||0);if(!m||!d||a<=0)return toast('Month, date and amount দিন');state.expenses.unshift({id:Date.now(),month:m,expenseDate:d,category:expCat.value,amount:a,note:expNote.value,date:new Date().toISOString()});expAmount.value='';expNote.value='';save();toast('Expense saved')}
 function openFlat(flat){currentFlat=flat;let f=state.flats.find(x=>x.flat===flat);fdTitle.textContent=f.flat+' • '+f.name;fdInfo.innerHTML='<p>'+f.floor+' | Intercom: '+f.intercom+'</p>';fdPhone.value=f.phone||'';fdPrev.value=f.previousDue||0;fdDue.innerHTML='<b>Total Due: '+money(totalDue(flat))+'</b>';phoneNote.textContent=f.phone?'WhatsApp reminder যাবে: '+f.phone:'এই ফ্ল্যাটের mobile number source list-এ ছিল না। Number লিখে Save করলে WhatsApp reminder কাজ করবে।';flatDialog.showModal()}
-function savePhone(){let f=state.flats.find(x=>x.flat===currentFlat);f.phone=(fdPhone.value||'').trim();save();openFlat(currentFlat)}
-function savePrevDue(){let f=state.flats.find(x=>x.flat===currentFlat);f.previousDue=Number(fdPrev.value||0);save();openFlat(currentFlat)}
+function savePhone(){let f=state.flats.find(x=>x.flat===currentFlat);f.phone=(fdPhone.value||'').trim();save();openFlat(currentFlat);toast('Phone number saved')}
+function savePrevDue(){let f=state.flats.find(x=>x.flat===currentFlat);f.previousDue=Number(fdPrev.value||0);save();openFlat(currentFlat);toast('Previous due saved')}
 function normalizeBD(phone){let p=(phone||'').replace(/\D/g,'');if(p.startsWith('880'))return p;if(p.startsWith('0'))return '88'+p;if(p.startsWith('1'))return '880'+p;return p}
-function sendWhatsApp(){let f=state.flats.find(x=>x.flat===currentFlat);if(!f.phone)return alert('এই ফ্ল্যাটের Mobile/WhatsApp number দিন এবং Save করুন');let phone=normalizeBD(f.phone);let msg='Assalamu Alaikum. Nager ASIA Garden, Flat '+f.flat+' এর মোট বকেয়া সার্ভিস চার্জ '+money(totalDue(f.flat))+'। অনুগ্রহ করে পরিশোধ করুন। ধন্যবাদ।';let url='https://wa.me/'+phone+'?text='+encodeURIComponent(msg);if(window.Android&&Android.openExternal)Android.openExternal(url);else location.href=url}
+function sendWhatsApp(){let f=state.flats.find(x=>x.flat===currentFlat);if(!f.phone)return toast('এই ফ্ল্যাটের Mobile/WhatsApp number দিন এবং Save করুন');let phone=normalizeBD(f.phone);let msg='Assalamu Alaikum. Nager ASIA Garden, Flat '+f.flat+' এর মোট বকেয়া সার্ভিস চার্জ '+money(totalDue(f.flat))+'। অনুগ্রহ করে পরিশোধ করুন। ধন্যবাদ।';let url='https://wa.me/'+phone+'?text='+encodeURIComponent(msg);if(window.Android&&Android.openExternal)Android.openExternal(url);else location.href=url}
 function renderDashboard(){mCollected.textContent=money(state.payments.filter(p=>p.month===cm).reduce((s,p)=>s+Number(p.amount),0));mDue.textContent=money(state.flats.reduce((s,f)=>s+totalDue(f.flat),0));mOpening.textContent=money(state.openingBalance);mBalance.textContent=money(currentBalance());mExpense.textContent=money(monthExpense());monthCharge.value=state.monthCharges[monthPick.value]||'';openingBalance.value=state.openingBalance||'';renderPhotos()}
 monthPick.onchange=()=>monthCharge.value=state.monthCharges[monthPick.value]||''
 function renderFlats(){let q=(searchFlat.value||'').toLowerCase(),arr=state.flats.filter(f=>(f.flat+' '+f.name+' '+(f.phone||'')).toLowerCase().includes(q));flatList.innerHTML=arr.map(f=>{let d=totalDue(f.flat);return '<div class="card flat"><div><h3>'+f.flat+' • '+f.name+'</h3><div class="muted">'+f.floor+' | Intercom '+f.intercom+' | '+(f.phone||'No phone')+'</div></div><div style="text-align:right"><span class="badge '+(d>0?'due':'paid')+'">'+(d>0?'Due '+money(d):'Paid')+'</span><br><button class="btn soft" style="margin-top:7px" onclick="openFlat(\''+f.flat+'\')">View</button></div></div>'}).join('')}
 function renderPayments(){payFlat.innerHTML=state.flats.map(f=>'<option>'+f.flat+'</option>').join('');paymentList.innerHTML=state.payments.slice(0,50).map(p=>'<div class="listitem"><b>'+p.flat+'</b> • '+p.month+' • '+money(p.amount)+' <span class="muted">('+p.method+')</span><div class="muted">Payment date: '+(p.paymentDate||p.date?.slice(0,10)||'')+'</div></div>').join('')||'<div class="muted">No payments yet</div>'}
 function renderExpenses(){expenseList.innerHTML=state.expenses.slice(0,50).map(e=>'<div class="listitem"><b>'+e.category+'</b> • '+e.month+' • '+money(e.amount)+'<div class="muted">'+(e.expenseDate||e.date?.slice(0,10)||'')+(e.note?' • '+e.note:'')+'</div></div>').join('')||'<div class="muted">No expenses yet</div>'}
-function exportCSV(type){let rows=[];if(type==='flats')rows=state.flats.map(f=>({...f,totalDue:totalDue(f.flat)}));if(type==='payments')rows=state.payments;if(type==='expenses')rows=state.expenses;if(!rows.length)return alert('No data');let keys=Object.keys(rows[0]);let csv=[keys.join(','),...rows.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\n');if(window.Android&&Android.downloadCsv)Android.downloadCsv(type+'.csv',csv)}
+function exportCSV(type){let rows=[];if(type==='flats')rows=state.flats.map(f=>({...f,totalDue:totalDue(f.flat)}));if(type==='payments')rows=state.payments;if(type==='expenses')rows=state.expenses;if(!rows.length)return toast('No data');let keys=Object.keys(rows[0]);let csv=[keys.join(','),...rows.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\n');if(window.Android&&Android.downloadCsv)Android.downloadCsv(type+'.csv',csv)}
 function savePhoto(who,input){let file=input.files&&input.files[0];if(!file)return;let reader=new FileReader();reader.onload=e=>{state.photos[who]=e.target.result;save()};reader.readAsDataURL(file)}
 function renderPhotos(){[['litton','L'],['joshim','J']].forEach(([who,letter])=>{let el=document.getElementById(who+'Avatar'),p=state.photos[who];el.innerHTML=p?'<img src="'+p+'" alt="'+who+'">':letter})}
 function renderAll(){renderDashboard();renderFlats();renderPayments();renderExpenses()}
-save();
+save();updateNavButtons();
 </script>
 </body></html>
